@@ -1,5 +1,6 @@
 package org.smart4j.chapter2.helper;
 
+import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.dbutils.QueryRunner;
@@ -8,8 +9,11 @@ import org.apache.commons.dbutils.handlers.BeanListHandler;
 import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.smart4j.chapter2.util.PropertiesUtil;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
 
@@ -24,46 +28,62 @@ public class DataBaseHelper {
     private static final String USERNAME;
     private static final String PASSWORD;
     private static final QueryRunner QUERY_RUNNER;
-    private static final ThreadLocal<Connection> THREAD_LOCAL;
+    private static final ThreadLocal<Connection> CONNECTION_HOLDER;
+    private static final HikariDataSource DATA_SOURCE;
 
     static {
         QUERY_RUNNER = new QueryRunner();
-        THREAD_LOCAL = new ThreadLocal<>();
+        CONNECTION_HOLDER = new ThreadLocal<>();
+        DATA_SOURCE = new HikariDataSource();
         Properties properties = PropertiesUtil.loadProperties("config.properties");
         DRIVER = PropertiesUtil.getString(properties, "jdbc.driver");
         URL = PropertiesUtil.getString(properties, "jdbc.url");
         USERNAME = PropertiesUtil.getString(properties, "jdbc.username");
         PASSWORD = PropertiesUtil.getString(properties, "jdbc.password");
-        try {
-            Class.forName(DRIVER);
-        } catch (ClassNotFoundException e) {
-            log.error("无法加载jdbc驱动", e);
+        DATA_SOURCE.setDriverClassName(DRIVER);
+        DATA_SOURCE.setJdbcUrl(URL);
+        DATA_SOURCE.setUsername(USERNAME);
+        DATA_SOURCE.setPassword(PASSWORD);
+    }
+
+    public static void executeSqlFile(String file) {
+        InputStream inputStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(file);
+        if (inputStream != null) {
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+            String sql;
+            try {
+                while ((sql = bufferedReader.readLine()) != null) {
+                    DataBaseHelper.executeUpdate(sql);
+                }
+            } catch (IOException e) {
+                log.error("执行脚本失败", e);
+            }
         }
     }
 
     public static Connection getConnection() {
-        Connection connection = THREAD_LOCAL.get();
+        Connection connection = CONNECTION_HOLDER.get();
         if (connection == null) {
             try {
-                connection = DriverManager.getConnection(URL, USERNAME, PASSWORD);
+                connection = DATA_SOURCE.getConnection();
             } catch (SQLException e) {
                 log.error("获取连接失败", e);
             } finally {
-                THREAD_LOCAL.set(connection);
+                CONNECTION_HOLDER.set(connection);
             }
         }
         return connection;
     }
 
     public static void closeConnection() {
-        Connection connection = THREAD_LOCAL.get();
+        Connection connection = CONNECTION_HOLDER.get();
         if (connection != null) {
             try {
                 connection.close();
             } catch (SQLException e) {
                 log.error("关闭连接失败", e);
             } finally {
-                THREAD_LOCAL.remove();
+                CONNECTION_HOLDER.remove();
             }
         }
     }
@@ -75,8 +95,6 @@ public class DataBaseHelper {
             entityList = QUERY_RUNNER.query(connection, sql, new BeanListHandler<>(entityClass), params);
         } catch (SQLException e) {
             log.error("查询失败", e);
-        } finally {
-            closeConnection();
         }
         return entityList;
     }
@@ -88,8 +106,6 @@ public class DataBaseHelper {
             result = QUERY_RUNNER.query(connection, sql, new BeanHandler<>(entityClass), params);
         } catch (SQLException e) {
             log.error("查询失败", e);
-        } finally {
-            closeConnection();
         }
         return result;
     }
@@ -101,8 +117,6 @@ public class DataBaseHelper {
             result = QUERY_RUNNER.query(connection, sql, new MapListHandler(), params);
         } catch (SQLException e) {
             log.error("查询失败", e);
-        } finally {
-            closeConnection();
         }
         return result;
     }
@@ -114,8 +128,6 @@ public class DataBaseHelper {
             count = QUERY_RUNNER.update(connection, sql, params);
         } catch (SQLException e) {
             log.error("更新失败", e);
-        } finally {
-            closeConnection();
         }
         return count;
     }

@@ -1,14 +1,17 @@
 package org.smart4j.chapter2.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.smart4j.chapter2.helper.DataBaseHelper;
 import org.smart4j.chapter2.model.Customer;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 class CustomerServiceTest {
 
     private final CustomerService customerService;
@@ -19,7 +22,7 @@ class CustomerServiceTest {
 
     @BeforeEach
     void init() {
-
+        DataBaseHelper.executeSqlFile("sql/customer_init.sql");
     }
 
     @Test
